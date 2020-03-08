@@ -1,0 +1,102 @@
+---
+title: "Heart Disease"
+author: "Akhil Jose Chandy"
+date: "2/1/2020"
+output: word_document
+#Description
+Logistic regression to predict probability of heart diseases based on
+the a Kaggle data set of heart diseases
+---
+
+```{r setup, include=FALSE}
+library(rio) #For importing datsets   
+library(stargazer)  #for nice outputs
+library(dplyr) #useful data manipulation
+library(ggplot2)  #good for plots
+library(reshape2) #useful in converting tables from long to wide format and vice-versa
+library(scales) # For rescaling the graphs
+library(lattice) #for making conditional plots
+library(reshape2)
+library(plyr)
+library(dplyr)
+library(rio)
+```
+
+```{r}
+rm(list = ls())  #hygiene practice-- clean up your worlspace in R
+
+library(readxl)  #readxl is part of readxl package
+setwd("C:/Akhil/USF BAIS/SDM/Working Directory")
+heart_df <- import("heart.csv")
+colnames(heart_df) <- tolower(colnames(heart_df))
+heart_df <- heart_df[ -c(10,11,13) ]
+heart_df<-heart_df[!(heart_df$ca==4),]
+summary(heart_df)
+str(heart_df)
+```
+```{r}
+heart_df$cp=as.factor(heart_df$cp)
+heart_df$restecg=as.factor(heart_df$restecg)
+heart_df$ca=as.factor(heart_df$ca)
+
+
+heart1.out=glm(target~age+sex+cp+trestbps+chol+fbs+restecg+thalach+exang+ca
+               ,data=heart_df,family="binomial")
+summary(heart1.out)
+```
+```{r}
+heart2.out=glm(target~age+sex+cp+trestbps+chol+fbs+restecg+thalach+exang+ca
+               +I(chol*fbs)
+               ,data=heart_df,family="binomial")
+summary(heart2.out)
+```
+```{r}
+heart3.out=glm(target~age+sex+cp+trestbps+chol+fbs+restecg+thalach+exang+ca
+               +I(chol*(restecg=='2'))
+               ,data=heart_df,family="binomial")
+summary(heart3.out)
+```
+
+```{r}
+heart4.out=glm(target~age+sex+cp+trestbps+thalach+exang+ca
+               ,data=heart_df,family="binomial")
+summary(heart4.out)
+
+a=AIC(heart1.out,heart4.out)
+
+stargazer(a,type='text',summary=FALSE)
+stargazer(heart4.out,type='text',summary=FALSE)
+#choosing heart4.out
+
+beta.info=cbind("beta"=coef(heart4.out),confint(heart4.out))
+stargazer(beta.info,type='text',summary=FALSE)
+
+```
+
+```{r}
+#predications
+
+pred.data=expand.grid(age=quantile(heart_df$age,c(.1,.2,.4,.6,.8,1))
+                      ,sex=unique(heart_df$sex),cp=unique(heart_df$cp)
+                      ,trestbps=quantile(heart_df$trestbps,c(.2,.4,.6,.8))
+                      ,thalach=quantile(heart_df$thalach,c(.2,.4,.6,.8))
+                      ,exang=unique(heart_df$exang)
+                      ,ca=unique(heart_df$ca)
+                      )
+pred.data$pred.beta=predict(heart4.out,newdata=pred.data,type='link')
+pred.data$pred.prob=plogis(pred.data$pred.beta)
+
+pred.data=pred.data[order(pred.data$pred.prob),]
+pred.data$index=seq(1,nrow(pred.data),1)
+
+plot(pred.data$index,pred.data$pred.prob,pch=19,col="red",main="Heart Disease Logistic Curve")
+
+max_prob=subset(pred.data,pred.prob==max(pred.prob))
+min_prob=subset(pred.data,pred.prob==min(pred.prob))
+
+stargazer(max_prob,type='text',summary=FALSE,title="The combination of Factors for highest probability of Heart Disease")
+
+stargazer(min_prob,type='text',summary=FALSE,title="The combination of Factors for lowest probability of Heart Disease")
+
+
+```
