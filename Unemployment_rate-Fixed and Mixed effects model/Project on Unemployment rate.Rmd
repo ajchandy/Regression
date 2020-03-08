@@ -1,0 +1,96 @@
+---
+title: "Unemployment_Project"
+author: "Akhil Jose Chandy"
+date: "2/10/2020"
+output: word_document
+---
+
+```{r}
+
+rm(list=ls())
+library(rio)
+library(moments)        
+library(corrplot)        
+library(car)
+library(plm)
+library(stargazer)
+library(corrplot)
+library(plotly)
+library(ggplot2)
+library(dplyr)
+library(lattice)
+setwd("C:/Users/yagna/Documents/R/R workings")
+d <- import("Unemployment.xlsx")
+names(d)
+head(d)
+str(d)
+
+if(!require(FSA)){install.packages("FSA")}
+if(!require(psych)){install.packages("psych")}
+if(!require(lme4)){install.packages("lme4")}
+if(!require(lmerTest)){install.packages("lmerTest")}
+if(!require(nlme)){install.packages("nlme")}
+
+#
+a <-pdata.frame(d, index=c("country","year"))
+pdim(a)
+
+
+summary(a)
+```
+
+```{r}
+
+# Pooled Effects Model
+
+pooled <-plm(unemp ~ inf + gdp + snp, data=a, model="pooling")
+summary(pooled)
+
+# Fixed Effects Model
+fixed_w <-plm(unemp ~ inf + gdp + snp , data=a, model="within")
+summary(fixed_w)
+
+summary(fixef(fixed_w))
+
+fixed_w2 <-plm(unemp ~ inf + gdp + snp , data=a, model="within", effect="twoways")
+summary(fixed_w2)
+
+summary(fixef(fixed_w2))
+
+#Comparing
+
+stargazer(summary(fixef(fixed_w)), type = "text", summary = FALSE, title = "Intercept for Within one way ")
+stargazer(summary(fixef(fixed_w2)), type = "text", summary = FALSE, title = "Intercept for Within Two way ")
+
+stargazer(pooled,fixed_w,fixed_w2,type='text',summary=FALSE)
+
+
+?plmtest
+
+pFtest(fixed_w, pooled)
+
+plmtest(fixed_w, effect = "individual")
+
+plmtest(fixed_w2, effect="twoways", type="bp")
+
+
+
+pFtest(fixed_w, fixed_w2)
+plmtest(fixed_w2,)
+
+```
+
+ 
+```{r}
+#Mixed effects
+
+model = lmer(unemp ~ inf + gdp +snp + (1|country),
+             data=d,
+             REML=TRUE)
+summary(model)
+fixef(model)
+ranef(model)
+coef(model)
+
+```
+
