@@ -1,0 +1,257 @@
+---
+title: "HW3"
+author: "Akhil Jose Chandy"
+date: "2/1/2020"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+rm(list=ls())
+library(rio)
+library(dplyr)
+library(stargazer)
+library(moments)
+library(ggplot2)
+library(psych)
+library(readxl)
+library(car)
+library(Hmisc)
+library(corrplot)
+library(tidyr)
+library(effects)
+library(GGally)
+library(doBy)
+library(Rcpp)
+library(gvlma)
+library(lmtest)
+```
+
+```{r}
+rm(list = ls())  #hygiene practice-- clean up your worlspace in R
+
+library(readxl)  #readxl is part of readxl package
+setwd("C:/Akhil/USF BAIS/SDM/Working Directory")
+dataset <- import("Balridge_data_prep_25Jan2020.csv")
+dataset <- dataset %>% drop_na() 
+colnames(dataset) <- tolower(colnames(dataset)) 
+dataset$period <- ifelse(dataset$year<1995,0, 
+                        ifelse(dataset$year>=1995&dataset$year<=1998, 1,
+                               ifelse(dataset$year>=1999&dataset$year<=2006,2,NA))) 
+```
+
+```{r}
+dataset$period=as.factor(dataset$period)
+dataset$sector=as.factor(dataset$sector)
+
+m1=lm(y1pccust ~ inf1pcma+as.factor(sector)+as.factor(period)+ld1pcla+st1pcdev+cs1pccmk+
+          hr3pcsat+pm1pcvc+I(inf1pcma*(sector==4))+I(inf1pcma*(period==2)), data=dataset)
+
+summary(m1)
+
+stargazer(m1,type="text",summary=FALSE,digits=2)
+```
+MLR 1: Population or true model is linear in parameters
+```{r}
+#1: Linearity
+##this assumption is Violated if we have nonlinearity in betas (nonlinear functional form)
+#Assess by looking at scatterplots of Y and xs
+
+# Nonlinearity can be due to Wrong regressors
+# or Betas themselves are a function of some other Zs  (use multilevel models)
+# How to address: 
+# use transformed y/x, or multi-level models if they are more appropriate
+
+
+plot(rstandard(m1)~m1$fitted.values)
+abline(0,0,col="red",lwd=3)
+
+```
+
+From the plot we see that the residuals are
+(1) pretty symmetrically distributed, tending to cluster towards the middle of the plot
+(2) they’re clustered around the lower values of the y-axis and most point lie between +2 to -2
+(3) in general there aren’t clear patterns
+(4) we do however see a few outliers
+
+We can conclude the linearity assumption is not violated
+
+MLR 2: Random sampling
+```{r}
+#2)-------------------------------->
+#Checking for auto correlation
+library(Rcpp)
+plot (m1$residuals ~ dataset$ld1pcla)
+plot (m1$residuals ~ dataset$st1pcdev)
+plot (m1$residuals ~ dataset$cs1pccmk)
+plot (m1$residuals ~ dataset$pm1pcvc)
+plot (m1$residuals ~ m1$fitted.values)
+abline(0,0,col="red",lwd=3)
+
+durbinWatsonTest(m1)
+
+
+```
+The Durbin Watson test for auto correlation shows a value of 1.7,we can safely conlcude that there is very little serial autocorrelation.
+
+Since the data is not time series data the assumption of Independence is unlikely to be violated.
+
+We do not see a pattern in the plots either.
+The independence assumtion is not violatde here
+
+MLR 3: Zero conditional mean 
+```{r}
+library(lmtest)
+#Checking for Functional form misspecification 
+resettest(m1)
+```
+
+On checking for functional form misspecification we see that we can reject the null hypothesis of the F test (model estimates all non linearities in data).
+The p value(0.03) is significant at the 5% level
+This means that the model does not account for some non linearities.
+
+We can hence say that it violates the exogenous variables assumption even though we haven't checked for the omitted variable bias and measurement error
+
+4)No perfect multicollinearity
+```{r}
+temp=subset(dataset,select=c(y1pccust,inf1pcma,ld1pcla,st1pcdev,cs1pccmk,pm1pcvc,hr3pcsat,sector),na.rm=TRUE)
+temp=data.matrix(temp, rownames.force = NA)
+cor(temp)
+
+vif(m1)   
+
+sqrt(vif(m1)) > 2
+
+
+```
+The correlation matrix shows that there is no perfect multicollinearity between predictors.
+From the VIF output we see that none of the values for beta are largeley inflated due to multicollinearity between the predictors.
+
+Thus the Multicollinearity assumption is not violated
+
+(5) MLR 5:
+
+```{r}
+plot(m1$fitted.values,m1$residuals,pch=19,
+     main="Residuals vs Fitted")
+abline(0,0,col="red",lwd=3)
+
+bartlett.test(list(m1$residuals,m1$fitted.values))    
+
+```
+When we take a look at the Residuals vs fitted values graph, we can see a funnel/cone shapped pattern indicating that there is heteroskedaticity in our model. After running the Bartlett test, since p-value is significant, we reject H0, concluding that the variances in the spread of residuals are not equal.
+
+(6) MLR 6: Normality assumption for u 
+```{r}
+qqnorm(m1$residuals,pch=19)
+qqline(m1$residuals,lwd=3,col="red")
+
+shapiro.test(m1$residuals)
+```
+
+We can say that normality assumption is not satisfied because the higher end is deviated in the QQ Plot.
+
+Then, we use Shapiro-Wilk Test because the sample size is <2000. P-value is significant,therefore we reject the null.Hence we conclude that the population of reesiduals is not normally distributed.
+
+PART 2
+
+```{r}
+m2=lm(inf1pcma ~ cs1pccmk+as.factor(sector)+as.factor(period)+ld1pcla+st1pcdev+hr3pcsat+pm1pcvc, data=dataset)
+stargazer(m2,type="text",summary=FALSE,digits=2)
+
+```
+1)Linearity
+```{r}
+#1: Linearity
+##this assumption is Violated if we have nonlinearity in betas (nonlinear functional form)
+#Assess by looking at scatterplots of Y and xs
+
+# Nonlinearity can be due to Wrong regressors
+# or Betas themselves are a function of some other Zs  (use multilevel models)
+# How to address: 
+# use transformed y/x, or multi-level models if they are more appropriate
+
+
+plot(rstandard(m2)~m2$fitted.values)
+abline(0,0,col="red",lwd=3)
+```
+From the plot we see that the residuals are
+(1) pretty symmetrically distributed, tending to cluster towards the middle of the plot
+(2) in general there aren’t clear patterns
+(3) we do however see a few outliers near the negative y axis near predictde values of 60.
+
+We can conclude the linearity assumption is not violated
+
+2)
+```{r}
+library(Rcpp)
+plot (m2$residuals ~ dataset$ld1pcla)
+plot (m2$residuals ~ dataset$st1pcdev)
+plot (m2$residuals ~ dataset$cs1pccmk)
+plot (m2$residuals ~ dataset$pm1pcvc)
+plot (m2$residuals ~ m1$fitted.values)
+abline(0,0,col="red",lwd=3)
+
+durbinWatsonTest(m2)
+```
+
+
+The Durbin Watson test for auto correlation shows a value of 1.6,we can safely conlcude that there is very little serial autocorrelation.
+
+Since the data is not time series data the assumption of Independence is unlikely to be violated.
+
+We do not see a pattern in the plots either.
+
+The independence assumtion is not violatde here
+3)
+```{r}
+
+library(lmtest)
+#Checking for Functional form misspecification 
+resettest(m2)
+
+```
+
+On checking for functional form misspecification we see that we can reject the null hypothesis of the F test (model estimates all non linearities in data).
+The p value(0.03) is significant at the 5% level
+This means that the model does not account for some non linearities.
+
+It has a very high F value and its highly significant providng strong evidence that the model does not sufficiently estimate the non linearities in data.
+
+We can hence say that it violates the exogenous variables assumption even though we haven't checked for the omitted variable bias and measurement error
+
+4)
+```{r}
+temp=subset(dataset,select=c(inf1pcma,ld1pcla,st1pcdev,cs1pccmk,pm1pcvc,hr3pcsat,sector),na.rm=TRUE)
+temp=data.matrix(temp, rownames.force = NA)
+cor(temp)
+
+vif(m2)   
+
+sqrt(vif(m2)) > 2
+```
+The correlation matrix shows that there is no perfect multicollinearity between predictors.
+From the VIF output we see that none of the values for beta are largeley inflated due to multicollinearity between the predictors.
+
+Thus the Multicollinearity assumption is not violated
+
+5)
+```{r}
+plot(m2$fitted.values,m2$residuals,pch=19,
+     main="Residuals vs Fitted")
+abline(0,0,col="red",lwd=3)
+
+bartlett.test(list(m2$residuals,m2$fitted.values)) 
+```
+When we take a look at the Residuals vs fitted values graph, we can see a funnel/cone shapped pattern indicating that there is heteroskedaticity in our model. After running the Bartlett test, since p-value is significant, we reject H0, concluding that the variances in the spread of residuals are not equal.
+
+6)
+```{r}
+qqnorm(m2$residuals,pch=19)
+qqline(m2$residuals,lwd=3,col="red")
+
+shapiro.test(m2$residuals)
+
+```
+We can say that normality assumption is not satisfied because the lower end is significantly away from the reference line, the residuals start to move away towards the upper end too.Hence violating the normality assumption for residuals.
+
+Then, we use Shapiro-Wilk Test because the sample size is <2000. P-value is highly significant,therefore we reject the null.Hence we conclude that the population of reesiduals is not normally distributed.
