@@ -1,0 +1,365 @@
+---
+title: "Summary statistics and exploratroy data analysis"
+author: "Akhil Jose Chandy"
+date: "1/20/2020"
+output: word_document
+---
+
+## Installing packages/ libraries: 
+```{r}
+library(rio) #For importing datsets   
+library(stargazer)  #for nice outputs
+library(dplyr) #useful data manipulation
+library(ggplot2)  #good for plots
+library(reshape2) #useful in converting tables from long to wide format and vice-versa
+library(scales) # For rescaling the graphs
+library(lattice) #for making conditional plots
+library(Hmisc) # for imputing missing values and advanced table making
+library(car)    # enhanced functions in R
+library(readxl) #to read excel data file, foreign and rio other lib for read/write data
+library(effects) # good supplement to car for plots etc
+```
+## Reading data, processing for analyses  zz
+```{r}
+rm(list = ls())  #hygiene practice-- clean up your worlspace in R
+
+setwd("C:/Akhil/USF BAIS/SDM/Working Directory")
+
+
+library(readxl)  #readxl is part of readxl package
+d <- import("baldridge2011.xlsx")
+colnames(d) <- tolower(colnames(d))  #forcing any capitalization in varnames to lowercase
+library(car)
+#brief(d)  #car function
+# str(d)   #shows data structure
+d$ccrtotal = as.numeric(d$ccrtotal)     #forcing var to be numeric
+d$ccat4total = as.numeric(d$ccat4total)
+d$icat4total = as.numeric(d$icat4total)
+d$ccat7total = as.numeric(d$ccat7total)
+d$icat2total[is.numeric(d$icat2total)]
+```
+
+###############################################################################################################################
+
+##Part 1: Descriptive statistics
+###1a)
+```{r}
+summary <- stargazer(d, type = "text", summary.stat = c("n", "Mean", "Median","min","max"), keep = c("iirtotal","ccrtotal"),digits = 2)
+hist(d$iirtotal, main = "Histogram of iirtotal") #To Plot the histogram
+hist(d$ccrtotal, main = "Histogram of ccrtotal")
+```
+#### Mode
+```{r}
+#Function to define Mode value
+Mode = function(x){ 
+  ta = table(x)
+  tam = max(ta)
+  if (all(ta == tam))
+    mod = NA
+  else
+    if(is.numeric(x))
+      mod = as.numeric(names(ta)[ta == tam])
+  else
+    mod = names(ta)[ta == tam]
+  return(mod)
+}
+
+Mode(d$iirtotal)
+Mode(d$ccrtotal)
+#Mode of iirtotal is 437
+#Mode of ccrtotal is 535
+```
+Since mean < median, the data is slightly left-skewed (you can calculate the skewness of a variable
+using ‘skewness ()’function in R) as the histograms shows. Hence, we can use median as
+a measure of central tendency than mean because median is not affected by outliers present in the
+data. But since the skewness is not very high, mean is not a bad measure of central tendency here.
+
+###1b)
+```{r}
+d$sectorName <- as.factor(d$sector)
+levels(d$sectorName) = c("Manufacturing", "Services", "Small business", "Education", "Health care", "Non-profit")
+d_sectorName <- group_by(d, sectorName)
+head(mutate(d_sectorName, avg_iirtotal=mean(iirtotal)),3)  #shows 3 rows of data with mutated variable
+summarise(d_sectorName, avg_iirtotal=mean(iirtotal, na.rm = TRUE), median_iirtotal = median(iirtotal, na.rm = TRUE), sd_iirtotal = sd(iirtotal, na.rm = TRUE)) 
+#1=mfg, 2=service, 3=small, 4=educ, 5=health, 6=nonprof
+summarise(d_sectorName, avg_ccrtotal=mean(ccrtotal, na.rm = TRUE), median_ccrtotal = median(ccrtotal,na.rm = TRUE), sd_ccrtotal = sd(ccrtotal, na.rm = TRUE))
+#summary is from collapsed data in a way, original dataset d remains unaffected
+```
+The sector that has the highest variation in ccrtotal is Non-profit.
+###1c)
+```{r}
+boxplot(d$ccrtotal, main = "With Outliers")
+mean(d$ccrtotal, na.rm = TRUE)
+ccrtotal2 <- d$ccrtotal[!d$ccrtotal %in% boxplot.stats(d$ccrtotal)$out]  #function to remove outliers--resulting data is without the outlier
+mean(ccrtotal2, na.rm = TRUE)
+boxplot(ccrtotal2, main = "Without Outliers")
+with_outlier <- stargazer(d, type = "text", keep = "ccrtotal", summary.stat = c("n", "Mean", "sd"), na.rm = TRUE, title = "Summary with Outliers")
+without_outlier <- stargazer(data.frame(ccrtotal2), type = "text", summary.stat = c("n", "Mean", "sd"), title = "Summary without Outliers" ) 
+
+lb = quantile(d$ccrtotal, na.rm = TRUE)[2] - 1.5 * IQR(d$ccrtotal,na.rm = TRUE)
+ub = quantile(d$ccrtotal, na.rm = TRUE)[4] + 1.5 * IQR(d$ccrtotal,na.rm = TRUE)
+```
+By comparing the Number of observations in both the tables, we find that, one outlier(185) was identified and removed.
+Anything outside (`r lb `,`r  ub `)
+Outliers can also be calculated by using quartiles. Outliers are classified as values falling outside the range (Q1 - 1.5 * IQR, Q3 + 1.5 * IQR) where IQR =Inter-Quartile Range
+
+###1d)
+```{r}
+#create subset where both icat4total and ccat7total exist
+p = subset(d,!is.na(d$ccat7total), c(icat4total , ccat7total))
+plot(p$icat4total , p$ccat7total , main = "icat4total vs ccat7total")
+c = cor(p$icat4total , p$ccat7total)
+```
+
+Correlation coefficient of icat4total , ccat7total = `r c`
+The coefficient is negative and very close to 0. We can also observe the same in the scatterplot as the points are randomly distributed.Negative correlation means that, higher icat4total scores are associated with lower ccat7total scores. Since the value is closer to 0 we understand that the association is very week.  
+
+At this point, we can only talk about correlations and realize that CORRELATION is not CAUSATION. What we see in the correlation coefficient and in the scatterplot is correlation, not what caused what. More on this as we proceed further in the course. 
+
+###1e)
+```{r}
+company = data.frame(table(d$permanentid))
+colnames(company) = c("Company","Freq")
+# to list companies that have been listed 1 or more times
+t <- data.frame(company[company$Freq >1,])
+t[order(t$Freq,decreasing = TRUE),]
+```
+
+###1f) zz instead of color change line ....marker and only for icat4 and icat7
+Company "B-030" with frequency of occurence = 8
+```{r}
+#company1 = subset(d, permanentid == "B-030", select = c("year","icat1total","icat2total","icat3total","icat4total","icat5total","icat6total","icat7total","iirtotal"))
+# changing data from wide to long format so that it can be used with ggplot2
+company1 = subset(d, permanentid == "B-030", select = c("year", "icat4total", "icat7total", "ccat7total"))
+temp = melt(company1,id.vars = "year" ,value.name = "score") 
+
+# ggplot(data=temp, aes(x=year, y=score, group = variable, colour = as.factor(variable))) + geom_line() +
+#   geom_vline(xintercept = 1995) + geom_vline(xintercept = 1998) +scale_x_continuous(breaks = seq(1990,2006)) +
+#   scale_y_continuous(breaks = seq(0,500, by=50))
+
+ggplot(data=temp, aes(x=year, y=score, group = variable)) + geom_line(aes(linetype = temp$variable)) +
+  geom_vline(xintercept = 1995) + geom_vline(xintercept = 1998) +scale_x_continuous(breaks = seq(1990,2006)) +
+  scale_y_continuous(breaks = seq(0,500, by=50)) + scale_linetype_discrete(name="Total Score")
+
+```
+
+###############################################################################################################################
+
+###Part2: Data Visualization
+###2a)
+```{r}
+temp1 <- subset(d,d$sector==5, select = c(icat4total,icat7total))
+hist(temp1$icat4total,main = "Histogram icat4Total distribution")
+hist(temp1$icat7total,main = "Histogram icat7Total distribution")
+summary <- stargazer(temp1, type = "text", summary.stat = c("n", "Mean", "Median", "sd"), keep = c("icat4total","icat7total"))
+Mode(temp1$icat4total)
+Mode((temp1$icat7total))
+```
+####Observations
+1. Both the distributions are slightly left skewed.
+2. icat4total is unimodal and icat7total is bimodal
+3. The standard deviation in icat7total is more than that of icat4total score.
+
+###2b) zz different marker 3 regression lines for specified time period
+```{r}
+temp2 = subset(d,!is.na(d$ccat7total) & d$sector == 1, c(icat4total , ccat7total, year))
+temp2$time_period <- ifelse(temp2$year < 1995, 0 ,ifelse(temp2$year < 1999, 1, 2))
+# 
+# ggplot(data=temp2, aes(x=icat4total, y=ccat7total, group = time_period, colour = as.factor(time_period))) + geom_point() + scale_colour_discrete(name="Time period",
+#                          breaks=c("0", "1", "2"),
+#                          labels=c("1990-1994", "1995-1998", "1999-2006"))
+
+d$time_period2 <- ifelse(d$year < 1995, "bef95" ,ifelse(d$year < 1999, "95to98", "99to06"))
+scatterplot(ccat7total ~ icat4total | d$time_period2, data=d,
+            legend=list(coords="bottomright", inset=0.05),
+            smooth=list(span=0.9))
+
+cor(subset(temp2,temp2$time_period == "0",select = c("icat4total" , "ccat7total")))
+cor(subset(temp2,temp2$time_period == "1",select = c("icat4total" , "ccat7total")))
+cor(subset(temp2,temp2$time_period == "2",select = c("icat4total" , "ccat7total")))
+
+## this chart show that curvature can disapper if we use dummy variables and their interactions-- 2 lines with different slopes, in other words what looks like curvature may be due to omitted dummy vars and their interactions with x var
+
+summary <- stargazer(temp2, type = "text", summary.stat = c("n", "Mean", "Median", "sd"), keep = c("icat4total","ccat7total"))
+cor(temp2$icat4total , temp2$ccat7total)
+
+```
+####Observations:
+1. The scatter plot has a random distribution of points suggesting that there is not much association.This is verified with the    low negative correlation value.
+2. The pattern between the scores dosn't show any visible linear trend
+
+###2c) zz
+```{r}
+d_sector <- group_by(d, year,sector)
+temp3 <- summarise(d_sector, avg_iirtotal=mean(iirtotal), N=sum(iirtotal)/mean(iirtotal))
+
+# ggplot(data=temp3, aes(x=year, y=avg_iirtotal, group = sector, colour = as.factor(sector))) + geom_line() +
+#   geom_vline(xintercept = 1995) + geom_vline(xintercept = 1998) +scale_x_continuous(breaks = seq(1990,2006)) +
+#   scale_y_continuous(breaks = seq(0,500, by=50)) + 
+#   scale_colour_discrete(name="Sector",
+#                          breaks=c("1", "2", "3","4","5","6"),
+#                          labels=c("Manufacturing", "Services", "Small business", "Education", "Health care", "Non-profit"))
+
+ggplot(data=temp3, aes(x=year, y=avg_iirtotal, group = sector)) + geom_line(aes(linetype = as.factor(temp3$sector))) +
+  geom_vline(xintercept = 1995) + geom_vline(xintercept = 1998) +scale_x_continuous(breaks = seq(1990,2006)) +
+  scale_y_continuous(breaks = seq(0,500, by=50)) + 
+  scale_linetype_discrete(name="Sector",
+                         breaks=c("1", "2", "3","4","5","6"),
+                         labels=c("Manufacturing", "Services", "Small business", "Education", "Health care", "Non-profit"))
+```
+###2d) zz
+```{r}
+# ggplot(data=temp3, aes(x=year, y=N, group = sector, colour = as.factor(sector))) + geom_line() +
+#   geom_vline(xintercept = 1995) + geom_vline(xintercept = 1998) +scale_x_continuous(breaks = seq(1990,2006)) +
+#   scale_y_continuous(breaks = seq(0,50, by=5)) + scale_colour_discrete(name="Sector",
+#                          breaks=c("1", "2", "3","4","5","6"),
+#                          labels=c("Manufacturing", "Services", "Small business", "Education", "Health care", "Non-profit"))
+
+ggplot(data=temp3, aes(x=year, y=N, group = sector)) + geom_line(aes(linetype = as.factor(sector))) +
+  geom_vline(xintercept = 1995) + geom_vline(xintercept = 1998) +scale_x_continuous(breaks = seq(1990,2006)) +
+  scale_y_continuous(breaks = seq(0,50, by=5)) + scale_linetype_discrete(name="Sector",
+                         breaks=c("1", "2", "3","4","5","6"),
+                         labels=c("Manufacturing", "Services", "Small business", "Education", "Health care", "Non-profit"))
+```
+
+###2e)  added a car function Boxplot as well  zz
+```{r}
+temp4 = subset(d, sector == 1, select= c("icat1total","icat2total","icat3total","icat4total","icat5total","icat6total","icat7total"))
+temp4 = na.omit(temp4)
+temp4m <- melt(temp4, variable.name = "score")
+ggplot(temp4m , aes(x=score, y=value)) + geom_boxplot()
+
+#Boxplot(~ income, data=temp4m)   #car, automatically identifies upto 10 outlying points using rownames if applicable
+#if boxplot do not show median line then median may be at the boundary
+#id=FALSE suppresses  automatic point identification
+```
+Categories 1,3 and 6 have outliers in the data for manufacturing sector.
+
+###2f)  zz
+```{r}
+temp2 = subset(d,!is.na(d$ccat7total) & d$sector == 1, c(year, icat4total, ccat7total))
+temp2$time_period <- ifelse(temp2$year < 1995, 0 ,ifelse(temp2$year < 1999, 1, 2))
+ggplot(data=temp2, aes(x=icat4total, y=ccat7total)) + geom_point()
+xyplot(temp2$icat4total~temp2$ccat7total | temp2$time_period, col = "red", main = "icat4total, ccat7total by time period", xlab = "ccat4total", ylab = "icat4total")
+cor(subset(temp2,time_period==0,select = c("icat4total","ccat7total")))
+cor(subset(temp2,time_period==1,select = c("icat4total","ccat7total")))
+cor(subset(temp2,time_period==2,select = c("icat4total","ccat7total")))
+```
+Observations:
+1. For time_period = 0, there appears to be positive relationship between the scores
+2. For time_period = 1, there appears to be negative relationship between the scores
+3. For time_period = 2, the points seem to be randomly distributed which would imply that there is less association between the    scores during this time
+
+###2g) table of summary stats
+```{r}
+summary <- stargazer(d, type = "text", summary.stat = c("n", "Mean", "sd", "min", "max"), keep = c("icat1total","icat2total","icat3total","icat4total","icat5total","icat6total","icat7total"), digits = 2)
+```
+###2h) pairwise correlations with p values
+```{r}
+temp5 = subset(d, select = c("ccat1total","ccat2total","ccat3total","ccat4total","ccat5total","ccat6total","ccat7total"))
+temp5 = na.omit(temp5)
+temp5 <- temp5 %>% mutate_if(is.character, as.numeric)
+round(cor(temp5),2)
+
+library(xtable)
+# x is a matrix containing the data
+# method : correlation method. "pearson"" or "spearman"" is supported
+# removeTriangle : remove upper or lower triangle
+# results :  if "html" or "latex"
+  # the results will be displayed in html or latex format
+corstars <-function(x, method=c("pearson", "spearman"), removeTriangle=c("upper", "lower"),
+                     result=c("none", "html", "latex")){
+    #Compute correlation matrix
+    require(Hmisc)
+    x <- as.matrix(x)
+    correlation_matrix<-rcorr(x, type=method[1])
+    R <- correlation_matrix$r # Matrix of correlation coeficients
+    p <- correlation_matrix$P # Matrix of p-value 
+    
+    ## Define notions for significance levels; spacing is important.
+    mystars <- ifelse(p < .0001, "****", ifelse(p < .001, "*** ", ifelse(p < .01, "**  ", ifelse(p < .05, "*   ", "    "))))
+    
+    ## trunctuate the correlation matrix to two decimal
+    R <- format(round(cbind(rep(-1.11, ncol(x)), R), 2))[,-1]
+    
+    ## build a new matrix that includes the correlations with their apropriate stars
+    Rnew <- matrix(paste(R, mystars, sep=""), ncol=ncol(x))
+    diag(Rnew) <- paste(diag(R), " ", sep="")
+    rownames(Rnew) <- colnames(x)
+    colnames(Rnew) <- paste(colnames(x), "", sep="")
+    
+    ## remove upper triangle of correlation matrix
+    if(removeTriangle[1]=="upper"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[upper.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove lower triangle of correlation matrix
+    else if(removeTriangle[1]=="lower"){
+      Rnew <- as.matrix(Rnew)
+      Rnew[lower.tri(Rnew, diag = TRUE)] <- ""
+      Rnew <- as.data.frame(Rnew)
+    }
+    
+    ## remove last column and return the correlation matrix
+    Rnew <- cbind(Rnew[1:length(Rnew)-1])
+    if (result[1]=="none") return(Rnew)
+    else{
+      if(result[1]=="html") print(xtable(Rnew), type="html")
+      else print(xtable(Rnew), type="latex") 
+    }
+} 
+corstars(temp5, result="none")   # **** p < .0001,***p < .001,** p < .01, * p < .05 
+```
+###############################################################################################################################
+
+###Part3: Confidence Intervals/ Prediction
+###3a) 95% CI for average
+```{r}
+xbar = mean(d$icat7total,na.rm = TRUE)
+n = length(d$icat7total[!is.na(d$icat7total)])
+sd = sd(d$icat7total[!is.na(d$icat7total)])
+se = sd/sqrt(n) #standard error estimate
+
+# Estimating CI using rule of thumb: 95% CI = xbar +/- 2*se
+moe = 2 * se     		# Margin of error
+ci = xbar + c(-moe, moe)	# Confidence interval
+
+# Estimating CI using normal distribution (CLT): R function: qnorm()
+moe = qnorm(.975) * se	
+ci = xbar + c(-moe, moe)
+
+# Estimating CI using a Student t-distribution. R function: qt()
+moe = qt(.975, df=n-1) * se
+ci = xbar + c(-moe, moe)
+```
+
+Why 0.975? Normal distribution has two tails. The 95% CI ranges from 2.5 to 97.5percentile. qnorm() returns the distance along the x-axis from the mean to the 97.5 percentile.
+Note: ci = xbar + 2*se gives you a 95.4% CI. Normal distribution gives a slightly narrower CI, qnorm(0.975). However, since we have a small sample, the distribution is best represented by a Student’s t-distribution (also called t-distribution). The t-distribution curve is a function of sample size n. If n becomes very large, the distribution approaches normal.
+
+The maximum expected icat7total score with 95% confidence is 147.3 because the ci equals (139.4217 , 147.3361)    
+
+###3b) simple t test for mean difference across two groups  zz
+```{r}
+dh = subset(d,d$sector== 5, select = icat7total)
+de = subset(d,d$sector== 4, select = icat7total)
+
+nh = length(dh$icat7total)
+ne = length(de$icat7total)
+moeh = qt(.975, df=nh-1) * sd(dh$icat7total)/sqrt(nh)
+moee = qt(.975, df=ne-1) * sd(de$icat7total)/sqrt(ne)
+cihealth = mean(dh$icat7total) + c(-moeh, moeh)
+ciedu = mean(de$icat7total) + c(-moee, moee)
+
+
+##another way to do this
+#d$sector
+S(m1 <- lm(icat7total~as.factor(sector), data=d))  #S function in car gives summary of anova m1
+library(emmeans)
+emmeans(m1, pairwise ~ as.factor(sector))  # gives us pairwise differences across all groups in sector
+
+
+```
+Since there is no overlap between the two groups, we can say, with 
+95% confidence that the mean icat7total score for health sector is higher than that of education sector
