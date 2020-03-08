@@ -1,2 +1,2 @@
 # Regression
-All regression projects
+Statistical Models (OLS,Logistic and Panel data modelling)
